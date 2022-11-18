@@ -178,7 +178,7 @@ class TextDetector(object):
                 ],
                 warmup=2,
                 logger=logger)
-        
+
     def order_points_clockwise(self, pts):
         rect = np.zeros((4, 2), dtype="float32")
         s = pts.sum(axis=1)
@@ -276,6 +276,15 @@ class TextDetector(object):
         #self.predictor.try_shrink_memory()
         post_result = self.postprocess_op(preds, shape_list)
         dt_boxes = post_result[0]['points']
+
+        confidences = post_result[0].get('confidence', None)
+        confidence_dict = dict()
+        if confidences is not None:
+            for i, dt_box in enumerate(dt_boxes):
+                # dt_key = "_".join(map(str, list(dt_box[..., 0])))
+                dt_key = dt_box[0][0]
+                confidence_dict[dt_key] = confidences[i]
+
         if (self.det_algorithm == "SAST" and self.det_sast_polygon) or (
                 self.det_algorithm in ["PSE", "FCE"]
                 and self.postprocess_op.box_type == 'poly'):
@@ -283,10 +292,17 @@ class TextDetector(object):
         else:
             dt_boxes = self.filter_tag_det_res(dt_boxes, ori_im.shape)
 
+        final_confidences = []
+        for dt_box in dt_boxes:
+            # dt_key = "_".join(map(str, list(dt_box[..., 0])))
+            dt_key = dt_box[0][0]
+            if dt_key in confidence_dict:
+                final_confidences.append(confidence_dict[dt_key])
+
         if self.args.benchmark:
             self.autolog.times.end(stamp=True)
         et = time.time()
-        return dt_boxes, et - st
+        return dt_boxes, et - st, final_confidences
 
 
 if __name__ == "__main__":
@@ -322,14 +338,14 @@ if __name__ == "__main__":
             logger.info("error in loading image:{}".format(image_file))
             continue
         st = time.time()
-        dt_boxes, _ = text_detector(img)
+        dt_boxes, _, confidences = text_detector(img)
 
         pred_ui_objs = []
         img_h, img_w, _ = img.shape
 
         out_contents = []
 
-        for raw_bboxes in dt_boxes:
+        for i, raw_bboxes in enumerate(dt_boxes):
 
             ##  (x1, y1)  - (x2, y2)
             ##      |           |
@@ -342,6 +358,9 @@ if __name__ == "__main__":
 
             line = f"{int(br_x)}, {int(br_y)}, {int(bl_x)}, {int(bl_y)}, {int(tl_x)}, {int(tl_y)}, {int(tr_x)}, {int(tr_y)}"
             out_contents.append(line)
+
+            if confidences != []:
+                print(line, confidences[i])
 
         filename = os.path.splitext(os.path.basename(image_file))[0]
         out_label_path = os.path.join(out_label_dir, f"res_{filename}.txt")

@@ -240,7 +240,7 @@ class DBPostProcess(object):
                 boxes, scores = self.boxes_from_bitmap(pred[batch_index], mask,
                                                        src_w, src_h)
 
-            boxes_batch.append({'points': boxes})
+            boxes_batch.append({'points': boxes, 'confidence': scores})
         return boxes_batch
 
 
